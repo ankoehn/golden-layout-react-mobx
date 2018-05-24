@@ -55,7 +55,7 @@ export class SecondGoldenPanel extends React.Component<ISecondGoldenPanelProps, 
     return (
       <div>
         <div style={styles.component}>
-          <p style={styles.title}><b>This is my first panel. It uses the has the firstStore and secondStore injected</b>
+          <p style={styles.title}><b>This is my second panel.</b>
           </p>
           <input type="text" value={this.secondStore.value} onChange={this.setValue}/>
           <button onClick={this.setContainerTitle} style={styles.btn}>Set Title</button>

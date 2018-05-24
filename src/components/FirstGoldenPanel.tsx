@@ -44,7 +44,7 @@ export class FirstGoldenPanel extends React.Component<IFirstGoldenPanelProps, {}
     return (
       <div>
         <div style={styles.component}>
-          <p style={styles.title}><b>This is my first panel. It uses the has the firstStore injected</b></p>
+          <p style={styles.title}><b>This is my first panel.</b></p>
           <input type="text" value={this.firstStore.value} onChange={this.setValue}/>
           <button onClick={this.setContainerTitle} style={styles.btn}>Set title</button>
         </div>
