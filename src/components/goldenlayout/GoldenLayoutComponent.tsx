@@ -1,16 +1,31 @@
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 import * as GoldenLayout from "golden-layout";
+import {inject, observer} from "mobx-react";
+import GoldenlayoutStore from '../../store/goldenlayoutStore'
 import "./goldenLayoutDependencies";
 import "./patchReactComponentHandler";
 import "golden-layout/src/css/goldenlayout-base.css";
 import "golden-layout/src/css/goldenlayout-dark-theme.css";
 
+const styles = {
+  component: {
+    height:"99vh"
+  },
+};
+
+interface IGoldenLayoutComponentProps {
+  goldenlayoutStore?: GoldenlayoutStore;
+  registerComponents: (layout: any) => void;
+}
+
 interface IGoldenLayoutComponentState {
   renderPanels: any;
 }
 
-export class GoldenLayoutComponent extends React.Component<any, IGoldenLayoutComponentState> {
+@inject('goldenlayoutStore')
+@observer
+export class GoldenLayoutComponent extends React.Component<IGoldenLayoutComponentProps, IGoldenLayoutComponentState> {
 
   public state = {
     renderPanels: []
@@ -18,6 +33,13 @@ export class GoldenLayoutComponent extends React.Component<any, IGoldenLayoutCom
 
   public containerRef: any = React.createRef();
   private goldenLayoutInstance: any = undefined;
+  private goldenlayoutStore: GoldenlayoutStore;
+
+  constructor(props) {
+    super(props);
+    const {goldenlayoutStore} = props;
+    this.goldenlayoutStore = goldenlayoutStore;
+  }
 
   public componentRender(reactComponentHandler: any) {
     this.setState(state => {
@@ -36,10 +58,8 @@ export class GoldenLayoutComponent extends React.Component<any, IGoldenLayoutCom
   }
 
   public componentDidMount() {
-    this.goldenLayoutInstance = new GoldenLayout(
-      this.props.config || {},
-      this.containerRef.current
-    );
+    this.goldenLayoutInstance = new GoldenLayout(this.goldenlayoutStore.config, this.containerRef.current);
+
     if (this.props.registerComponents instanceof Function) {
       this.props.registerComponents(this.goldenLayoutInstance);
     }
@@ -57,7 +77,7 @@ export class GoldenLayoutComponent extends React.Component<any, IGoldenLayoutCom
   public render() {
     const panels = Array.from(this.state.renderPanels || []);
     return (
-      <div ref={this.containerRef} {...this.props.htmlAttrs}>
+      <div ref={this.containerRef} style={styles.component}>
         {panels.map((panel, index) => {
           return ReactDOM.createPortal(
             panel._getReactComponent(),
