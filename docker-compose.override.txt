@@ -1,0 +1,167 @@
+version: '3'
+services:
+  api-gateway:
+    extra_hosts: # override routing
+      - "leistungsverzeichnis:${SERVER_IP}"
+      #      - "leistungsbeantragung:${SERVER_IP}"
+      - "leistungsimporter:${SERVER_IP}"
+    #     - "portal:${SERVER_IP}"
+    ports:
+      - "18080:18080"
+
+  bz-api-gateway:
+    extra_hosts: # override routing
+      - "leistungssideloader:${SERVER_IP}"
+    ports:
+      - "19080:19080"
+  id-broker:
+    ports:
+      - "18081:18081"
+  mailhog:
+    volumes: # override volumes (etc/localtime|timezone is not allowed to read on mac)
+      - ./README.md:/etc/localtime
+      - ./README.md:/etc/timezone
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+  database:
+    ports:
+      - "1521:1521"
+  leistungsbeantragung:
+    environment:
+      - "MINIO_HOST"
+    ports:
+      - "18083:18083"
+  leistungsverzeichnis:
+    ports:
+      - "18084:18084"
+  minio:
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+  elasticsearch:
+    ports:
+      - "9200:9200"
+  gsb72:
+    hostname: gsb72
+    image: partner.bdr.de/bun-docker/gsb:7.2
+    environment:
+      - "GSB_HOSTNAME=gsb72"
+      - "GSB_DOMAINNAME=${GSB_DOMAINNAME:-local.tir.budru.de}"
+      - "GSB_DATABASE_HOST=database:1521"
+      - "GSB_DATABASE_NAME=XEPDB1"
+      - "LOGNAME=cmadmin" # workaround for importer
+    networks:
+      default:
+        aliases:
+          - gsb.${GSB_DOMAINNAME:-local.tir.budru.de}
+          - content.${GSB_DOMAINNAME:-local.tir.budru.de}
+          - preview.${GSB_DOMAINNAME:-local.tir.budru.de}
+          - workflow.${GSB_DOMAINNAME:-local.tir.budru.de}
+          - editor.${GSB_DOMAINNAME:-local.tir.budru.de}
+          - search.${GSB_DOMAINNAME:-local.tir.budru.de}
+          - cmsearch.${GSB_DOMAINNAME:-local.tir.budru.de}
+          - cmdelivery.${GSB_DOMAINNAME:-local.tir.budru.de}
+          - mail.${GSB_DOMAINNAME:-local.tir.budru.de}
+          - master.${GSB_DOMAINNAME:-local.tir.budru.de}
+          - slave.${GSB_DOMAINNAME:-local.tir.budru.de}
+    volumes:
+      - ../portal/contentpatch:/home/cmadmin/contentpatches:z
+    ports:
+      - "7001:7001" # tomcat_http_port
+      - "7003:7003" # tomcat_rmi_registry_port
+      - "7004:7004" # tomcat_rmi_server_port
+      - "7005:7005" # tomcat_server_port
+      - "7009:7009" # tomcat_ajp_port
+      - "44446:44446" # tomcat_orb_port
+  matomodb:
+    image: mariadb
+    command: --max-allowed-packet=64MB
+    restart: always
+    volumes:
+      - matomodb:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=matomo
+    env_file:
+      - ./matomodb.env
+
+  matomo:
+    image: matomo
+    restart: always
+    volumes:
+      #     - ./logs:/var/www/html/logs
+      - matomo:/var/www/html
+    environment:
+      - MATOMO_DATABASE_HOST=matomodb
+    env_file:
+      - ./matomodb.env
+    ports:
+      - 8080:80
+  portal:
+    restart: always
+    ports:
+      - "18082:18082"
+    environment:
+      - "GSB_ACCESS_DISABLED=true"
+    extra_hosts:
+      - "leistungsverzeichnis:${SERVER_IP}"
+
+  nats1:
+    restart: always
+    hostname: nats1
+    image: partner.bdr.de/bun-docker/deps/nats:2.9.0-alpine3.16
+    command: --name nats1  --http_port 8222 --cluster_name JSC --js --sd /data --cluster nats://0.0.0.0:4245 --routes nats://nats1:4245,nats://nats2:4245,nats://nats3:4245 -p 4222
+    ports:
+      - 4222:4222
+      - 8222:8222
+    volumes:
+      - ./jetstream-cluster/nats1:/data
+
+  nats2:
+    restart: always
+    hostname: nats2
+    image: partner.bdr.de/bun-docker/deps/nats:2.9.0-alpine3.16
+    command: --name nats2 --http_port 8222 --cluster_name JSC --js --sd /data --cluster nats://0.0.0.0:4245 --routes nats://nats1:4245,nats://nats2:4245,nats://nats3:4245 -p 4222
+    ports:
+      - 4223:4222
+      - 8223:8222
+    volumes:
+      - ./jetstream-cluster/nats2:/data
+
+  nats3:
+    restart: always
+    hostname: nats3
+    image: partner.bdr.de/bun-docker/deps/nats:2.9.0-alpine3.16
+    command: --name nats3 --http_port 8222 --cluster_name JSC --js --sd /data --cluster nats://0.0.0.0:4245 --routes nats://nats1:4245,nats://nats2:4245,nats://nats3:4245 -p 4222
+    ports:
+      - 4224:4222
+      - 8224:8222
+    volumes:
+      - ./jetstream-cluster/nats3:/data
+
+  nats-box:
+    image: partner.bdr.de/bun-docker/deps/nats-box:0.8.1
+    environment:
+      - NATS_URL=nats://nats:4222
+    entrypoint: [ "sh" ]
+    command:
+      - "-c"
+      - |
+        nats stream add li-transferobjekte --subjects=li-transferobjekte.transferobjekt --replicas=1 --storage=file --retention=workq --discard=old --max-msgs=-1 --max-msgs-per-subject=-1 --max-bytes=-1 --max-age=-1 --max-msg-size=-1 --dupe-window=2m0s --no-allow-rollup --no-deny-delete --no-deny-purge
+        nats stream add lv-sdgrequests --subjects=lv-sdgrequests.sdgrequest --replicas=1 --storage=file --retention=limits --discard=old --max-msgs=-1 --max-msgs-per-subject=-1 --max-bytes=-1 --max-age=-1 --max-msg-size=-1 --dupe-window=2m0s --no-allow-rollup --no-deny-delete --no-deny-purge
+        exit
+  postgres:
+    image: postgres:15.1-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+volumes:
+  matomodb:
+  matomo:
+  db:
+    driver: local
